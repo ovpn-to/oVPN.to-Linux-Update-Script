@@ -2,11 +2,13 @@
 # 
 # oVPN.to API LINUX Updater
 #
-SCRIPTVERSION="0022";
-URL="https://vcp.ovpn.to/xxxapi.php";
-if ! test -z $2 && test $2 = "force"; then FORCE="1"; echo "FORCE=ON"; else FORCE="0"; fi;
-if ! test -z $2 && test $2 = "debug"; then ODEBUG="1"; echo "DEBUG=ON"; else ODEBUG="0"; fi;
+SCRIPTVERSION="0026";
+PORT="443"; URL="https://vcp.ovpn.to:$PORT/xxxapi.php";
+
 requirements () {
+	VCP="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
+	if ! test -z $2 && test $2 = "force"; then FORCE="1"; echo "FORCE=ON"; else FORCE="0"; fi;
+	if ! test -z $2 && test $2 = "debug"; then ODEBUG="1"; echo "DEBUG=ON"; else ODEBUG="0"; fi;
 	if ! test `whoami` = "root"; then echo -e "Error: run with su -c '$0 update $2'"; exit 1; fi;
 	if test -e "/etc/os-release"; then
 		source /etc/os-release;
@@ -19,7 +21,12 @@ requirements () {
 	which 7z >/dev/null && UNZIP="7z";
 	which curl >/dev/null || (echo "ERROR:curl not found" && exit 1);
 	which openvpn >/dev/null || (echo "openvpn not found" && exit 1);
+	which openssl >/dev/null || (echo "openssl not found" && exit 1);
 	if test -z $UNZIP; then echo "ERROR:unzip or 7z not found" && exit 1; fi;
+	CERT=`openssl s_client -servername vcp.ovpn.to -connect vcp.ovpn.to:$PORT < /dev/null 2>/dev/null | openssl x509 -sha256 -fingerprint -noout -in /dev/stdin|cut -d= -f2`;
+	if [ "$CERT" = "$VCP" ]; then if [ $ODEBUG -eq "1" ]; then echo -e "R=$CERT\nL=$VCP"; fi;
+		echo "Remote SSL-Fingerprint checked against hardcoded: OK!";
+	else echo -e "ERROR: Received invalid SSL-Fingerprint from Certificate at https://vcp.ovpn.to!\nR=$CERT\nL=$VCP"; exit 1; fi;
 	APICONFIGFILE="ovpnapi.conf";
 	LASTUPDATEFILE="lastovpntoupdate.txt";
 	if test -e $APICONFIGFILE; then 
@@ -66,13 +73,13 @@ requirements () {
 				else
 					echo "LOCAL/REMOTE HASH ERROR!";
 					exit 1;
-				fi
+				fi;
 			fi;
 	fi;
 
-	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQ=$REQ"; fi
+	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQ=$REQ"; fi;
 	REQUEST=`curl -s --request POST $URL --data $ODATA|cut -d: -f2`;
-	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQUEST=$REQUEST"; fi
+	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQUEST=$REQUEST"; fi;
 	if [ "$OPENVPNVERSION" -lt "$REQUEST" ]; then 
 		if [ "$ID" = "debian" ] && [ "$VERSION" = "7 (wheezy)" ]; then
 			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
