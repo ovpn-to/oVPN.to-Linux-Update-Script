@@ -2,7 +2,8 @@
 # 
 # oVPN.to API LINUX Updater
 #
-SCRIPTVERSION="0026";
+PFX="00";
+SCRIPTVERSION="28";
 PORT="443"; URL="https://vcp.ovpn.to:$PORT/xxxapi.php";
 
 requirements () {
@@ -48,14 +49,14 @@ requirements () {
 	SDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapish";
 	REQUEST=`curl -s --request POST $URL --data $SDATA`;
 	RSV=`echo "$REQUEST"|cut -d: -f2`;
-	if [ "$RSV" -gt "$SCRIPTVERSION" ]; then
+	if [ $RSV -gt $SCRIPTVERSION ]; then
 		echo "YOUR SCRIPT v${SCRIPTVERSION} IS OUT OF DATE! Remote=v${RSV}! Updating...";
 			HASHDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapihash";
 			HASHREQUEST=`curl -s --request POST $URL --data $HASHDATA`;
 			HASHSTRLEN=`echo "$HASHREQUEST" |wc -c`;
 			if [ $HASHSTRLEN -eq "129" ]; then
 				TMPFILE="ovpnapi.sh.v${RSV}"
-				wget "https://vcp.ovpn.to/files/ovpnapi.sh.v${RSV}" -O $TMPFILE;
+				wget "https://vcp.ovpn.to/files/ovpnapi.sh.v${PFX}${RSV}" -O $TMPFILE;
 				LOCALHASH=`sha512sum $TMPFILE | cut -d" " -f1`;
 				echo "REMOTE-HASH:$HASHREQUEST";
 				echo "LOCAL-HASH:$LOCALHASH";
@@ -75,12 +76,14 @@ requirements () {
 					exit 1;
 				fi;
 			fi;
+	else
+		echo "Error RSV=$RSV REQUEST=$REQUEST";
 	fi;
 
 	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQ=$REQ"; fi;
 	REQUEST=`curl -s --request POST $URL --data $ODATA|cut -d: -f2`;
 	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQUEST=$REQUEST"; fi;
-	if [ "$OPENVPNVERSION" -lt "$REQUEST" ]; then 
+	if [ $OPENVPNVERSION -lt $REQUEST ]; then 
 		if [ "$ID" = "debian" ] && [ "$VERSION" = "7 (wheezy)" ]; then
 			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
 			if [ "$ARCH" = "x86_64" ]; then 
