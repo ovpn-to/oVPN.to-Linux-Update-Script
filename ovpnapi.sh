@@ -3,11 +3,13 @@
 # oVPN.to API LINUX Updater
 #
 PFX="00";
-SCRIPTVERSION="28";
-PORT="443"; URL="https://vcp.ovpn.to:$PORT/xxxapi.php";
+SCRIPTVERSION="30";
+PORT="443"; DOMAIN="https://vcp.ovpn.to"; API="xxxapi.php";
+SSL="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
+
 
 requirements () {
-	VCP="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
+	DEVMODE="0"; # NEVER change this value to 1!
 	if ! test -z $2 && test $2 = "force"; then FORCE="1"; echo "FORCE=ON"; else FORCE="0"; fi;
 	if ! test -z $2 && test $2 = "debug"; then ODEBUG="1"; echo "DEBUG=ON"; else ODEBUG="0"; fi;
 	if ! test `whoami` = "root"; then echo -e "Error: run with su -c '$0 update $2'"; exit 1; fi;
@@ -25,33 +27,41 @@ requirements () {
 	which openssl >/dev/null || (echo "openssl not found" && exit 1);
 	if test -z $UNZIP; then echo "ERROR:unzip or 7z not found" && exit 1; fi;
 	CERT=`openssl s_client -servername vcp.ovpn.to -connect vcp.ovpn.to:$PORT < /dev/null 2>/dev/null | openssl x509 -sha256 -fingerprint -noout -in /dev/stdin|cut -d= -f2`;
-	if [ "$CERT" = "$VCP" ]; then if [ $ODEBUG -eq "1" ]; then echo -e "R=$CERT\nL=$VCP"; fi;
-		echo "Remote SSL-Fingerprint checked against hardcoded: OK!";
-	else echo -e "ERROR: Received invalid SSL-Fingerprint from Certificate at https://vcp.ovpn.to!\nR=$CERT\nL=$VCP"; exit 1; fi;
+	if [ "$CERT" = "$SSL" ]; then if [ $ODEBUG -eq "1" ]; then echo -e "REMOTESSL=$CERT\nLOCALSSL=$SSL"; fi;
+		echo "$DOMAIN SSL-Fingerprint checked against hardcoded: OK!";
+	else echo -e "ERROR: Received invalid SSL-Fingerprint from Certificate at $DOMAIN !\nREMOTE=$CERT\nLOCAL=$SSL"; exit 1; fi;
 	APICONFIGFILE="ovpnapi.conf";
 	LASTUPDATEFILE="lastovpntoupdate.txt";
 	if test -e $APICONFIGFILE; then 
 		source $APICONFIGFILE;
 	else
 		echo "Please edit: `pwd`/$APICONFIGFILE";
-		echo -e "USERID=\"0\";\nAPIKEY=\"0x123abc\";\nOCFGTYPE=\"lin\";\nOVPNPATH=\"/etc/openvpn\";\n" > $APICONFIGFILE
+		echo -e "USERID=\"00000\";\nAPIKEY=\"0x123abc\";\nOCFGTYPE=\"lin\";\nOVPNPATH=\"/etc/openvpn\";\n" > $APICONFIGFILE
 		cat $APICONFIGFILE;
 		exit 1;
 	fi;
 	if ! test $USERID -gt "0"; then echo "Invalid USERID in $APICONFIGFILE"; exit 1; fi
 	if ! test `echo "$APIKEY"|wc -c` -eq "129"; then echo "Invalid APIKEY in $APICONFIGFILE"; exit 1; fi
 	
+	URL="$DOMAIN:$PORT/$API";
 	OPENVPNVERSION=`openvpn --version | head -1 | cut -d" " -f2 | sed 's/\.//g'`;
 	ODATA="uid=${USERID}&apikey=${APIKEY}&action=getovpnversion";
 	REQ=`curl -s --request POST $URL --data $ODATA|cut -d":" -f1`;
 	if ! test "$REQ" = "AUTHOK"; then echo "Invalid USERID or APIKEY"; exit 1; else echo "Login OK"; fi;
 
 	SDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapish";
+	test $DEVMODE -eq "1" && SDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapish_devmode" && \
+		 echo "Warning! Using Developer-Mode for Script-Version Check!";
 	REQUEST=`curl -s --request POST $URL --data $SDATA`;
 	RSV=`echo "$REQUEST"|cut -d: -f2`;
 	if [ $RSV -gt $SCRIPTVERSION ]; then
-		echo "YOUR SCRIPT v${SCRIPTVERSION} IS OUT OF DATE! Remote=v${RSV}! Updating...";
+		echo "YOUR SCRIPT v${SCRIPTVERSION} IS OUT OF DATE! Remote=v${RSV}! Asking you to Update";
+		if [ "$FORCE" -eq "0" ]; then echo -n "Update now? (Y)es / (N)o : "; read READINPUT; else READINPUT="yes"; echo " FORCED"; fi;
+		INPUT=`echo $READINPUT | tr '[:upper:]' '[:lower:]'`;
+		if [ ! -z $INPUT ]&&([ "$INPUT" = "yes" ]||[ "$INPUT" = "y" ]); then
 			HASHDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapihash";
+			test $DEVMODE -eq "1" && HASHDATA="uid=${USERID}&apikey=${APIKEY}&action=getlatestlinuxapihash_devmode" && \
+				echo "Warning! Using Developer-Mode for Script-Hash Check!";
 			HASHREQUEST=`curl -s --request POST $URL --data $HASHDATA`;
 			HASHSTRLEN=`echo "$HASHREQUEST" |wc -c`;
 			if [ $HASHSTRLEN -eq "129" ]; then
@@ -76,8 +86,11 @@ requirements () {
 					exit 1;
 				fi;
 			fi;
+		else
+			echo "$0 Script not updated.";
+		fi;
 	else
-		echo "Error RSV=$RSV REQUEST=$REQUEST";
+		echo "$0 Script is up to date";
 	fi;
 
 	if [ $ODEBUG -eq "1" ]; then echo -e "DEBUG:requirements:REQ=$REQ"; fi;
@@ -97,9 +110,9 @@ requirements () {
 			fi;			
 			if ! test -z $SHA512SUM; then
 				OVPNFILE="openvpn_2.3.6-debian0_$ARCH.deb";
-				OVPNFILEURL="https://swupdate.openvpn.net/apt/pool/wheezy/main/o/openvpn/$OVPNFILE";
-				OVPNFILEURL="https://vcp.ovpn.to/files/release/$OVPNFILE";
-				wget "$OVPNFILEURL" -O "/usr/src/$OVPNFILE";
+				OVPNFILEURLA="https://swupdate.openvpn.net/apt/pool/wheezy/main/o/openvpn/$OVPNFILE";
+				OVPNFILEURLB="https://vcp.ovpn.to/files/release/$OVPNFILE";
+				wget "$OVPNFILEURLB" -O "/usr/src/$OVPNFILE" || wget "$OVPNFILEURLA" -O "/usr/src/$OVPNFILE"
 				if [ `sha512sum /usr/src/$OVPNFILE|cut -d" " -f1` = "$SHA512SUM" ]; then
 					dpkg -i /usr/src/$OVPNFILE;
 					exit 0;
@@ -109,7 +122,9 @@ requirements () {
 			echo "Warning! Update your openVPN $OPENVPNVERSION Client manually to $REQUEST!";
 		fi;
 	else
-		echo "openVPN-Client is up2date. L=$OPENVPNVERSION = R=$REQUEST";		
+		echo "openVPN-Client is up2date.";
+		if [ $ODEBUG -eq "1" ]; then echo "DEBUG: LOCALVERSION=$OPENVPNVERSION REMOTEVERSION=$REQUEST"; fi
+	
 	fi;
 	if [ "$OPENVPNVERSION" -ge "234" ]; then CVERSION="23x"; fi;
 	if [ "$OPENVPNVERSION" -lt "234" ]; then CVERSION="22x"; fi;
@@ -187,8 +202,9 @@ apicheckupdate () {
 		LUPDATE=`cat $LASTUPDATEFILE`;
 		if [ $REMOTELASTUPDATE -gt $LUPDATE ]; then
 			echo "Update available!";
-			if [ "$FORCE" -eq "0" ]; then echo -n "Update now? (Y)es / (N)o : "; read READINPUT; fi;
-			if [ ! -z $READINPUT ]&&[ "$READINPUT" = "Y" ]||[ "$READINPUT" = "y" ]||[ $FORCE -eq "1" ]; then
+			if [ "$FORCE" -eq "0" ]; then echo -n "Update oVPN-Configs now? (Y)es / (N)o : "; read READINPUT; else READINPUT="yes"; echo " FORCED"; fi;
+			INPUT=`echo $READINPUT | tr '[:upper:]' '[:lower:]'`;
+			if [ ! -z $INPUT ]&&([ "$INPUT" = "yes" ]||[ "$INPUT" = "y" ]); then
 					apigetconfigs;
 					apirequestcerts;
 			else
@@ -196,14 +212,14 @@ apicheckupdate () {
 				exit 1;
 			fi;
 		else
-			echo "No Update available. (rm $LASTUPDATEFILE)";
+			echo "No Update available. Force update with: [sudo] rm $LASTUPDATEFILE; [sudo] $0 update";
 			exit 0;
 		fi;
 	fi;
 }
 
 
-if [ $# -lt 1 ]; then echo "Usage : $0 update [debug|force]"; exit 1; fi;
+if [ $# -lt 1 ]; then echo "Usage : [sudo] $0 update [debug|force]"; exit 1; fi;
 
 case "$1" in
 'update')  echo  -n "Checking for oVPN Certs/Config-Update: "
