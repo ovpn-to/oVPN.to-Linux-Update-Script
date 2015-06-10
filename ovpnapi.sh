@@ -3,7 +3,7 @@
 # oVPN.to API LINUX Updater
 #
 PFX="00";
-SCRIPTVERSION="32";
+SCRIPTVERSION="33";
 PORT="443"; DOMAIN="vcp.ovpn.to"; API="xxxapi.php";
 SSL="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
 IPTABLESANTILEAK="/root/iptables.sh";
@@ -101,15 +101,15 @@ requirements () {
 			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
 			if [ "$ARCH" = "x86_64" ]; then 
 				ARCH="amd64";
-				SHA512SUM="c3966ac62d4b7bfb7e4be0db039d0b6da33fa947fef6e21e1ca98cbe94f9624fe09e0438f0bb3fea4bbee0736977390333c4a82a1d7d5835048f5f6793272089";
+				SHA512SUM="d11764fb35ff21651d18424d60f0c01104443850a42b19f85d50bcd5c8d6eee643283d60710e3adadd17ae3fba93e980cd05e166811886494819eea7e7647e40";
 			elif [ "$ARCH" = "i686" ]||[ "$ARCH" = "i386" ]; then 
 				ARCH="i386";
-				SHA512SUM="abbac8e1c83a666445bdde804d0fca50c6e7174b1156efbd93d8d3028ce60f585c5bf5728c44a866dc7bbe122b40ae72623aa7a3d8de9d356d1433e2313a2b91";
+				SHA512SUM="8d609a6e9ef8f339bbd4ef8a0872f208a4105346c95aa62169f35d01ea697d80c36b5bc1fa6b50ddfb49294a480080b5f732985012ef5fa09fa268fca1eef7c5";
 			else
 				echo "ARCH not FOUND: $ARCH `uname -a`";
 			fi;			
 			if ! test -z $SHA512SUM; then
-				OVPNFILE="openvpn_2.3.6-debian0_$ARCH.deb";
+				OVPNFILE="openvpn_2.3.7-debian0_$ARCH.deb";
 				OVPNFILEURLA="https://swupdate.openvpn.net/apt/pool/wheezy/main/o/openvpn/$OVPNFILE";
 				OVPNFILEURLB="https://$DOMAIN/files/release/$OVPNFILE";
 				wget "$OVPNFILEURLB" -O "/usr/src/$OVPNFILE" || wget "$OVPNFILEURLA" -O "/usr/src/$OVPNFILE"
