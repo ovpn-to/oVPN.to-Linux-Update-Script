@@ -3,7 +3,7 @@
 # oVPN.to API LINUX Updater
 #
 PFX="00";
-SCRIPTVERSION="34";
+SCRIPTVERSION="36";
 PORT="443"; DOMAIN="vcp.ovpn.to"; API="xxxapi.php"; URL="https://${DOMAIN}:${PORT}/$API";
 SSL="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
 IPTABLESANTILEAK="/root/iptables.sh";
@@ -100,7 +100,7 @@ requirements () {
 	if [ ${ODEBUG} -eq 1 ]; then echo -e "DEBUG:requirements:REQ=${REQ}"; fi;
 	REQUEST=`${CURL} --request POST ${URL} --data ${ODATA}|cut -d: -f2`;
 	if [ ${ODEBUG} -eq 1 ]; then echo -e "DEBUG:requirements:REQUEST=${REQUEST}"; fi;
-	if [ $OPENVPNVERSION -lt ${REQUEST} ]; then 
+	if [ ${OPENVPNVERSION} -lt ${REQUEST} ]; then
 		if [ ${ID} = "debian" ] && ([ "${VERSION}" == "7 (wheezy)" ] || [ "${VERSION}" == "8 (jessie)" ]); then
 			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
 			if [ ${ARCH} = "x86_64" ]||[ ${ARCH} = "i686" ]||[ ${ARCH} = "i386" ]; then
@@ -149,16 +149,18 @@ apirequestcerts () {
 		if test -e ${OCFGFILE} && test -e ${CERTFILE}; then 
 			echo -e "\noVPN-Configs downloaded to ${OCFGFILE}\nCertificates downloaded to ${CERTFILE}";
 			LASTACTIVECONFIGS=`ls /etc/openvpn/*ovpn.to*.conf 2>/dev/null`;
+
+			# read tunX-ifs to backup
+			for LASTCONF in ${LASTACTIVECONFIGS}; do
+				SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`; TUNDATA=`grep -E "^dev tun[0-9]|route-nopull" ${LASTCONF}`;
+				test $? -eq 0 && echo "${TUNDATA}" > "/tmp/${SRVNAME}" && echo "Backuped '${TUNDATA}' to /tmp/${SRVNAME}";
+			done;
 			OLDDIRS=`ls -d ${OVPNPATH}/*.ovpn.to 2>/dev/null`;
-			for ODIR in ${OLDDIRS}; do
-				if [ ${ODEBUG} -eq 1 ]; then rm -rvf ${ODIR}; else rm -rf ${ODIR}; fi
-			done;			
+			for ODIR in ${OLDDIRS}; do if [ ${ODEBUG} -eq 1 ]; then rm -rvf ${ODIR}; else rm -rf ${ODIR}; fi; done;			
 			
-			if [ ${ODEBUG} -eq 1 ]; then 
-				rm -vf ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt;
-			else
-				rm -f ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt;
-			fi;
+			if [ ${ODEBUG} -eq 1 ]; then rm -vf ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt;
+			else	rm -f ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt; fi;
+
 			echo "Extracting...";
 			if test ${UNZIP} = "unzip"; then 
 				ECMD1="unzip ${OCFGFILE} -d ${OVPNPATH}";
@@ -174,8 +176,12 @@ apirequestcerts () {
 			for LASTCONF in ${LASTACTIVECONFIGS}; do
 				CHECKCONFIG=`echo ${LASTCONF} | cut -d. -f1,2,3,4`;
 				if [ -f ${CHECKCONFIG} ]; then
-					echo "Enabling last enabled Server-Configuration ${LASTCONF}";
-					mv -v ${CHECKCONFIG} ${LASTCONF};
+					SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`;					
+					mv -v ${CHECKCONFIG} ${LASTCONF} && echo "Re-Enabled: ${LASTCONF}";
+					if [ -f "/tmp/${SRVNAME}" ]; then
+						TUNDATA=`cat "/tmp/${SRVNAME}"`;
+						sed -i '/dev\ tun/d' ${LASTCONF} && echo "${TUNDATA}" >> ${LASTCONF} && echo -e "Restored '${TUNDATA}' for ${SRVNAME}\n" && rm -f "/tmp/${SRVNAME}";
+					fi;
 				 fi;
 			done;
 			if [ -f ${IPTABLESANTILEAK} ]; then
