@@ -152,7 +152,7 @@ apirequestcerts () {
 
 			# read tunX-ifs to backup
 			for LASTCONF in ${LASTACTIVECONFIGS}; do
-				SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`; TUNDATA=`grep -E "^dev tun[0-9]|route-nopull" ${LASTCONF}`;
+				SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`; TUNDATA=`grep -E "^dev\ tun[0-9]|^route-nopull|^route-noexec|^script-security|^route-up|^route-pre-down|^log" ${LASTCONF}`;
 				test $? -eq 0 && echo "${TUNDATA}" > "/tmp/${SRVNAME}" && echo "Backuped '${TUNDATA}' to /tmp/${SRVNAME}";
 			done;
 			OLDDIRS=`ls -d ${OVPNPATH}/*.ovpn.to 2>/dev/null`;
