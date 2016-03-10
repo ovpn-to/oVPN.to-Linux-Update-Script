@@ -3,7 +3,7 @@
 # oVPN.to API LINUX Updater
 #
 PFX="00";
-SCRIPTVERSION="36";
+SCRIPTVERSION="38";
 PORT="443"; DOMAIN="vcp.ovpn.to"; API="xxxapi.php"; URL="https://${DOMAIN}:${PORT}/$API";
 SSL="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
 IPTABLESANTILEAK="/root/iptables.sh";
@@ -100,7 +100,8 @@ requirements () {
 	if [ ${ODEBUG} -eq 1 ]; then echo -e "DEBUG:requirements:REQ=${REQ}"; fi;
 	REQUEST=`${CURL} --request POST ${URL} --data ${ODATA}|cut -d: -f2`;
 	if [ ${ODEBUG} -eq 1 ]; then echo -e "DEBUG:requirements:REQUEST=${REQUEST}"; fi;
-	if [ ${OPENVPNVERSION} -lt ${REQUEST} ]; then
+	if [ -z ${REQUEST} ]; then echo "Request failed. exiting..."; exit 1; 
+	elif [ ${OPENVPNVERSION} -lt ${REQUEST} ]; then
 		if [ ${ID} = "debian" ] && ([ "${VERSION}" == "7 (wheezy)" ] || [ "${VERSION}" == "8 (jessie)" ]); then
 			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
 			if [ ${ARCH} = "x86_64" ]||[ ${ARCH} = "i686" ]||[ ${ARCH} = "i386" ]; then
@@ -136,12 +137,15 @@ apirequestcerts () {
 	if [ ${ODEBUG} -eq 1 ]; then echo "DEBUG:apirequestcerts:REQUEST=${REQUEST}"; fi
 	while : 
 	do	
-		echo -n ${REQUEST};
-		if [ ${REQUEST} = "ready" ]; then break; fi;
-		if [ ${REQUEST} = "submitted" ]; then echo -n "!please wait.."; fi;
-		sleep 5; echo -n "."; REQUEST=`${CURL} --request POST ${URL} --data ${DATA}`;
+		if [ ! -z ${REQUEST} ]; then echo -n ".${REQUEST}"; TIMEOUT=0; else let TIMEOUT="TIMEOUT+1"; echo -n "... timeout:${TIMEOUT}/10"; fi;
+		if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "submitted" ]; then echo -n "! please wait.."; fi;
+		if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "ready" ]; then break; fi;
+		test ${TIMEOUT} -ge 10 && break;
+		sleep 5; REQUEST=`${CURL} --request POST ${URL} --data ${DATA}`;
 	done;
-	if [ ${REQUEST} = "ready" ]; then
+	test ${TIMEOUT} -ge 10 && (echo "Request timeout. exiting..."; exit 1) 
+
+	if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "ready" ]; then
 		CERTFILE="/tmp/ovpncerts${USERID}.zip";
 		DATA="uid=${USERID}&apikey=${APIKEY}&action=getcerts";
 		if test -e ${CERTFILE}; then rm -f ${CERTFILE}; fi
@@ -152,14 +156,14 @@ apirequestcerts () {
 
 			# read tunX-ifs to backup
 			for LASTCONF in ${LASTACTIVECONFIGS}; do
-				SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`; TUNDATA=`grep -E "^dev\ tun[0-9]|^route-nopull|^route-noexec|^script-security|^route-up|^route-pre-down|^log" ${LASTCONF}`;
+				SRVNAME=`echo ${LASTCONF}|cut -d/ -f4`; TUNDATA=`grep -E "^dev tun[0-9]|route-nopull" ${LASTCONF}`;
 				test $? -eq 0 && echo "${TUNDATA}" > "/tmp/${SRVNAME}" && echo "Backuped '${TUNDATA}' to /tmp/${SRVNAME}";
 			done;
 			OLDDIRS=`ls -d ${OVPNPATH}/*.ovpn.to 2>/dev/null`;
 			for ODIR in ${OLDDIRS}; do if [ ${ODEBUG} -eq 1 ]; then rm -rvf ${ODIR}; else rm -rf ${ODIR}; fi; done;			
 			
-			if [ ${ODEBUG} -eq 1 ]; then rm -vf ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt;
-			else	rm -f ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt; fi;
+			if [ ${ODEBUG} -eq 1 ]; then RM="rm -vf"; else RM="rm -f"; fi
+			${RM} ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt ${OVPNPATH}/*.log;
 
 			echo "Extracting...";
 			if test ${UNZIP} = "unzip"; then 
@@ -167,8 +171,8 @@ apirequestcerts () {
 				ECMD2="unzip ${CERTFILE} -d ${OVPNPATH}";
 			fi;
 			if test ${UNZIP} = "7z"; then 
-				ECMD1="7z e -o${OVPNPATH} ${OCFGFILE} "; 
-				ECMD2="7z x -o${OVPNPATH} ${CERTFILE} ";
+				ECMD1="7z e -o${OVPNPATH} ${OCFGFILE} -y"; 
+				ECMD2="7z x -o${OVPNPATH} ${CERTFILE} -y";
 			fi;
 			if [ ${ODEBUG} -eq 1 ]; then $ECMD1; $ECMD2;
 			else	${ECMD1} 1>/dev/null; ${ECMD2} 1>/dev/null;	fi;
@@ -206,13 +210,14 @@ apigetconfigs () {
 	DATA="uid=${USERID}&apikey=${APIKEY}&action=getconfigs&version=${CVERSION}&type=${OCFGTYPE}";
 	rm -f ${OCFGFILE}; 		
 	REQUEST=`${CURL} --request POST ${URL} --data ${DATA} -o ${OCFGFILE}`;
-	if test -e ${OCFGFILE}; then echo "ready"; else echo "Error!"; exit 1; fi;
+	if test -f ${OCFGFILE}; then echo "ready"; else echo "Error!"; exit 1; fi;
 }
 
 
 apicheckupdate () {
 	DATA="uid=${USERID}&apikey=${APIKEY}&action=lastupdate";
 	REQUEST=`${CURL} --request POST ${URL} --data ${DATA}`;
+	if [ -z ${REQUEST} ]; then echo "Request failed. exiting..."; exit 1; fi;
 	if [ ${ODEBUG} -eq 1 ]; then echo -e "DEBUG:apicheckupdate:REQUEST=${REQUEST}"; fi
 	REMOTELASTUPDATE=`echo ${REQUEST}|cut -d":" -f2`;
 	if [ ${REMOTELASTUPDATE} -gt 0 ]; then
