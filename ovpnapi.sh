@@ -1,5 +1,5 @@
 #!/bin/bash
-SCRIPTVERSION=40
+SCRIPTVERSION=42
 # 
 # oVPN.to API LINUX Updater
 #
@@ -12,9 +12,10 @@ CVERSION="23x";
 # do not change these lines
 PFX="00"; PORT="443"; DOMAIN="vcp.ovpn.to"; API="xxxapi.php"; URL="https://${DOMAIN}:${PORT}/$API";
 SSL1="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
+SSL2="D2:71:CC:7F:44:28:54:3F:93:9A:CD:30:10:DB:A2:02:1C:27:A5:93:43:38:37:71:69:62:C6:46:D4:4B:1C:ED";
 SSLB="CD:52:1C:A0:F9:24:67:10:71:C7:F2:D4:0E:58:33:A2:90:A6:95:7C:3B:6B:3B:37:A1:4C:E2:90:0E:98:5E:A9";
 APICONFIGFILE="ovpnapi.conf";
-DEVMODE=1; # NEVER change this value to 1!
+DEVMODE=0; # NEVER change this value to 1!
 requirements () {
 	test ${DEVMODE} -eq 1 && echo -e "\nWarning! DEVMODE=1!\n";
 	if test -f "/etc/os-release"; then	source /etc/os-release; echo -ne "${0}: v${SCRIPTVERSION} @ ($ID $VERSION `uname -r`:`uname -v`:`uname -m`) "; fi;
@@ -55,12 +56,15 @@ requirements () {
 	echo -ne "\nCheck SSL Fingerprint: ${DOMAIN} ";
 	REMOTESSLCERT=`openssl s_client -servername ${DOMAIN} -connect ${DOMAIN}:${PORT} < /dev/null 2>/dev/null | openssl x509 -sha256 -fingerprint -noout -in /dev/stdin|cut -d= -f2`;
 	if [ ${REMOTESSLCERT} = ${SSL1} ]; then 
-		test ${DEBUG} -eq 1 && echo -e "REMOTESSL=${REMOTESSLCERT}\nLOCALSSL=${SSL}";
+		test ${DEBUG} -eq 1 && echo -e "REMOTESSL=${REMOTESSLCERT}\nLOCALSSL=${SSL1}";
+		echo "OK";
+	elif [ ${REMOTESSLCERT} = ${SSL2} ]; then 
+		test ${DEBUG} -eq 1 && echo -e "REMOTESSL=${REMOTESSLCERT}\nLOCALSSL=${SSL2}";
 		echo "OK";
 	elif [ ${REMOTESSLCERT} = ${SSLB} ]; then 
 		echo "Site in Maintenance Mode! Please try again later!";
 		exit 1
-	else echo -e "Error: Invalid SSL Fingerprint @ ${DOMAIN} !\nREMOTE=${REMOTESSLCERT}\nLOCAL=${SSL}"; exit 1; fi;
+	else echo -e "Error: Invalid SSL Fingerprint @ ${DOMAIN} !\nREMOTE=${REMOTESSLCERT}\nLOCAL=${SSLB}"; exit 1; fi;
 		
 	if test -f ${APICONFIGFILE}; then 
 		source ${APICONFIGFILE};
