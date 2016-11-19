@@ -14,7 +14,7 @@ PFX="00"; PORT="443"; DOMAIN="vcp.ovpn.to"; API="xxxapi.php"; URL="https://${DOM
 SSL1="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1:27:74:B4:07:B9:54:6A";
 SSL2="D2:71:CC:7F:44:28:54:3F:93:9A:CD:30:10:DB:A2:02:1C:27:A5:93:43:38:37:71:69:62:C6:46:D4:4B:1C:ED";
 SSLB="CD:52:1C:A0:F9:24:67:10:71:C7:F2:D4:0E:58:33:A2:90:A6:95:7C:3B:6B:3B:37:A1:4C:E2:90:0E:98:5E:A9";
-APICONFIGFILE="ovpnapi.conf";
+APICONFIGFILE="`dirname $0`/ovpnapi.conf";
 DEVMODE=0; # NEVER change this value to 1!
 requirements () {
 	test ${DEVMODE} -eq 1 && echo -e "\nWarning! DEVMODE=1!\n";
