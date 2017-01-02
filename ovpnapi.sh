@@ -1,4 +1,5 @@
-SCRIPTVERSION=43
+#!/bin/bash
+SCRIPTVERSION=42
 # 
 # oVPN.to API LINUX Updater
 #
@@ -137,8 +138,10 @@ requirements () {
 	OV_B=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | cut -d. -f2`;
 	OV_C=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | cut -d. -f3`;
 	if [ ${OV_A} -eq 2 ]; then
-		if [ ${OV_B} -eq 4 ]; then CHECKVERSION=1; test -z ${CVERSION} && CVERSION="24x";
-			if [ `echo ${OV_C} | cut -c1-3` == "_rc" ]; then echo " Warning! Please update openVPN ${OV_A}.${OV_B}.${OV_C} to openVPN 2.4 stable!"; fi;
+		if [ `echo ${OV_B} | cut -c1-4` == "4_rc" ]; then 
+			echo " Warning! Please update openVPN ${OV_A}.${OV_B}.${OV_C} to openVPN 2.4 stable!";
+			test -z ${CVERSION} && CVERSION="24x";
+		elif [ ${OV_B} -eq 4 ]; then CHECKVERSION=1; test -z ${CVERSION} && CVERSION="24x";
 		elif [ ${OV_B} -eq 3 ]; then test -z ${CVERSION} && CVERSION="23x";
 		elif [ ${OV_B} -eq 2 ]; then test -z ${CVERSION} && CVERSION="22x";
 		fi;
