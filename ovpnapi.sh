@@ -1,5 +1,4 @@
-#!/bin/bash
-SCRIPTVERSION=42
+SCRIPTVERSION=43
 # 
 # oVPN.to API LINUX Updater
 #
@@ -15,7 +14,7 @@ SSL1="CE:4F:88:43:F8:6B:B6:60:C6:02:C7:AB:9C:A9:2F:15:3A:9F:F4:65:A3:20:D0:11:A1
 SSL2="D2:71:CC:7F:44:28:54:3F:93:9A:CD:30:10:DB:A2:02:1C:27:A5:93:43:38:37:71:69:62:C6:46:D4:4B:1C:ED";
 SSLB="CD:52:1C:A0:F9:24:67:10:71:C7:F2:D4:0E:58:33:A2:90:A6:95:7C:3B:6B:3B:37:A1:4C:E2:90:0E:98:5E:A9";
 APICONFIGFILE="`dirname $0`/ovpnapi.conf";
-DEVMODE=0; # NEVER change this value to 1!
+DEVMODE=1; # NEVER change this value to 1!
 requirements () {
 	test ${DEVMODE} -eq 1 && echo -e "\nWarning! DEVMODE=1!\n";
 	if test -f "/etc/os-release"; then	source /etc/os-release; echo -ne "${0}: v${SCRIPTVERSION} @ ($ID $VERSION `uname -r`:`uname -v`:`uname -m`) "; fi;
@@ -82,7 +81,6 @@ requirements () {
 	if ! test ${USERID} -gt 0; then echo "Invalid USERID in ${APICONFIGFILE}"; exit 1; fi
 	if ! test `echo -n "${APIKEY}"|wc -c` -eq 128; then echo "Invalid APIKEY in ${APICONFIGFILE}"; exit 1; fi
 	
-	OPENVPNVERSION=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | sed 's/\.//g'`;
 	ODATA="uid=${USERID}&apikey=${APIKEY}&action=getovpnversion";
 	test ${DEVMODE} -eq 1 && ODATA="uid=${USERID}&apikey=${APIKEY}&action=getovpnversion_devmode";
 	REQ=`${CURL} --request POST ${URL} --data ${ODATA}|cut -d":" -f1`;
@@ -134,139 +132,126 @@ requirements () {
 	fi;
 
 	echo -n "Check VPN Client: ";
-	test ${DEBUG} -eq 1 && echo -e "DEBUG:requirements:REQ=${REQ}";
-	REQUEST=`${CURL} --request POST ${URL} --data ${ODATA}|cut -d: -f2`;
-	test ${DEBUG} -eq 1 && echo -e "DEBUG:requirements:REQUEST=${REQUEST}";
-	if [ -z ${REQUEST} ]; then echo "Request failed. exiting..."; exit 1; 
-	elif [ ${OPENVPNVERSION} -lt ${REQUEST} ]; then
-		if ([ ${ID} == "debian" ] && [ ${ROOT} -eq 1 ]) && ([ "${VERSION}" == "7 (wheezy)" ] || [ "${VERSION}" == "8 (jessie)" ]); then
-			if test ${VERSION} = "7 (wheezy)"; then OSV="wheezy"; 
-			elif test ${VERSION} = "8 (jessie)"; then OSV="jessie"; fi;
-			ARCH=`openvpn --version | head -1 | cut -d" " -f3| cut -d"-" -f1`;
-			if [ ${ARCH} = "x86_64" ]||[ ${ARCH} = "i686" ]||[ ${ARCH} = "i386" ]; then
-				if [ ! -f /etc/apt/sources.list.d/swupdate.openvpn.net.list ]; then
-					apt-key del E158C569 2>&1 > /dev/null
-					wget -O - https://swupdate.openvpn.net/repos/repo-public.gpg|apt-key add -
-					echo "deb http://swupdate.openvpn.net/apt ${OSV} main" > /etc/apt/sources.list.d/swupdate.openvpn.net.list
-				fi;
-				if [ -f /etc/apt/sources.list.d/swupdate.openvpn.net.list ]; then
-					apt-get update && apt-get upgrade
-				fi;
-			else
-				echo "ARCH not FOUND: ${ID} ${VERSION} ${ARCH} `uname -a`: Update your openVPN ${OPENVPNVERSION} Client manually to ${REQUEST}!";
-			fi;
-		else echo "Warning! Update your openVPN Client v${OPENVPNVERSION} manually to v${REQUEST}! OS ${ID}:${VERSION} not supported or not root... root=${ROOT}"; fi;
-	elif [ ${OPENVPNVERSION} -ge ${REQUEST} ]; then
-		echo "OK";
-		test ${DEBUG} -eq 1 && echo "DEBUG: LOCALVERSION=${OPENVPNVERSION} REMOTEVERSION=${REQUEST}";
+	
+	OV_A=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | cut -d. -f1`;
+	OV_B=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | cut -d. -f2`;
+	OV_C=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | cut -d. -f3`;
+	if [ ${OV_A} -eq 2 ]; then
+		if [ ${OV_B} -eq 4 ]; then CHECKVERSION=1; test -z ${CVERSION} && CVERSION="24x";
+			if [ `echo ${OV_C} | cut -c1-3` == "_rc" ]; then echo " Warning! Please update openVPN ${OV_A}.${OV_B}.${OV_C} to openVPN 2.4 stable!"; fi;
+		elif [ ${OV_B} -eq 3 ]; then test -z ${CVERSION} && CVERSION="23x";
+		elif [ ${OV_B} -eq 2 ]; then test -z ${CVERSION} && CVERSION="22x";
+		fi;
+		test -z ${CHECKVERSION} && CHECKVERSION=0;
 	else
-		echo "FAIL!";
-		exit 1
+		echo "openVPN Version check failed!";
 	fi;
-	if [ "$OPENVPNVERSION" -ge "234" ] && [ -z ${CVERSION} ]; then CVERSION="23x"; fi;
-	if [ "$OPENVPNVERSION" -lt "234" ] && [ -z ${CVERSION} ]; then CVERSION="22x"; fi;
+	
+	if [ ${CHECKVERSION} -eq 1 ]; then
+		test ${DEBUG} -eq 1 && echo -e "DEBUG:requirements:REQ=${REQ}";
+		REQUEST=`${CURL} --request POST ${URL} --data ${ODATA}|cut -d: -f2`;
+		test ${DEBUG} -eq 1 && echo -e "DEBUG:requirements:REQUEST=${REQUEST}";
+		if [ -z ${REQUEST} ]; then 
+			echo "Request failed"; 
+		else
+			OPENVPNVERSION=`${OPENVPNBIN} --version | head -1 | cut -d" " -f2 | sed 's/\.//g'`;
+			if [ ${OPENVPNVERSION} -lt ${REQUEST} ]; then
+				echo "Warning! Update your openVPN Client v${OPENVPNVERSION} manually to v${REQUEST}!";
+			elif [ ${OPENVPNVERSION} -ge ${REQUEST} ]; then
+				echo "OK";
+				test ${DEBUG} -eq 1 && echo "DEBUG: LOCALVERSION=${OPENVPNVERSION} REMOTEVERSION=${REQUEST}";
+			else
+				echo "FAIL!";
+				exit 1
+			fi;
+		fi;
+	else
+		echo "openVPN 2.4 available!";
+	fi;
+	
 	test ${DEBUG} -eq 1 && echo "DEBUG:requirements:CVERSION=$CVERSION";
-	test ! -f ${LASTUPDATEFILE} && echo "0" > ${LASTUPDATEFILE};	
+	test ! -f ${LASTUPDATEFILE} && echo "0" > ${LASTUPDATEFILE};
 }
 
 
-
-apirequestcerts () {
-	echo -n "Download VPN Certs:";
-	DATA="uid=${USERID}&apikey=${APIKEY}&action=requestcerts";
-	REQUEST=`${CURL} --request POST ${URL} --data ${DATA}`;
-	test ${DEBUG} -eq 1 && echo "DEBUG:apirequestcerts:REQUEST=${REQUEST}";
-	while : 
-	do	
-		if [ ! -z ${REQUEST} ]; then echo -n " ${REQUEST}"; TIMEOUT=0; else let TIMEOUT="TIMEOUT+1"; echo -n "... timeout:${TIMEOUT}/10"; fi;
-		if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "submitted" ]; then echo -n "! please wait..."; fi;
-		if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "ready" ]; then break; fi;
-		test ${TIMEOUT} -ge 10 && break;
-		sleep 5; REQUEST=`${CURL} --request POST ${URL} --data ${DATA}`;
-	done;
-	test ${TIMEOUT} -ge 10 && (echo "Request timeout. exiting..."; exit 1) 
-
-	if [ ! -z ${REQUEST} ] && [ ${REQUEST} = "ready" ]; then
-		CERTFILE="oVPN.to_Certificates_${USERID}.zip";
-		DATA="uid=${USERID}&apikey=${APIKEY}&action=getcerts";
-		if test -e ${CERTFILE}; then rm -f ${CERTFILE}; fi
-		REQUEST=`${CURL} --request POST ${URL} --data ${DATA} -o ${CERTFILE}`;
-		if test -f ${OCFGFILE} && test -f ${CERTFILE}; then 
-			echo -e "\noVPN Serverconfig downloaded to ${OCFGFILE}\noVPN Certificates downloaded to ${CERTFILE}";
-			LASTACTIVECONFIGS=`ls ${OVPNPATH}/*ovpn.to*.conf 2>/dev/null`;
-
-			# read tunX-ifs to backup
-			for LASTCONF in ${LASTACTIVECONFIGS}; do
-				SRVNAME=`echo ${LASTCONF}|rev|cut -d/ -f1|rev|cut -d. -f1,2,3,4`;
-				TUNDATA=`grep -E "^dev\ tun[0-9]|^route-nopull|^fast-io|^nice|^up|^down|^script-security|^verb|^log|^socks-proxy|^http-proxy" ${LASTCONF}`;
-				test $? -eq 0 && echo "${TUNDATA}" > "/tmp/${SRVNAME}" && TD=`echo "${TUNDATA}" | tr '\n' '|'` && echo -e " Backup: '${TD}' to /tmp/${SRVNAME}";
-			done;
-			OLDDIRS=`ls -d ${OVPNPATH}/*.ovpn.to 2>/dev/null`;
-			for ODIR in ${OLDDIRS}; do if [ ${DEBUG} -eq 1 ]; then rm -rvf ${ODIR}; else rm -rf ${ODIR}; fi; done;			
-			
-			if [ ${DEBUG} -eq 1 ]; then RM="rm -vf"; else RM="rm -f"; fi
-			${RM} ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt ${OVPNPATH}/*.log;
-
-			echo "Extracting...";
-			if test ${UNZIP} = "unzip"; then 
-				ECMD1="unzip ${OCFGFILE} -d ${OVPNPATH}";
-				ECMD2="unzip ${CERTFILE} -d ${OVPNPATH}";
-			fi;
-			if test ${UNZIP} = "7z"; then 
-				ECMD1="7z e -o${OVPNPATH} ${OCFGFILE} -y"; 
-				ECMD2="7z x -o${OVPNPATH} ${CERTFILE} -y";
-			fi;
-			if [ ${DEBUG} -eq 1 ]; then $ECMD1; $ECMD2;	else	${ECMD1} 1>/dev/null; ${ECMD2} 1>/dev/null; fi;
-			
-			for LASTCONF in ${LASTACTIVECONFIGS}; do
-				SRVNAME=`echo ${LASTCONF}|rev|cut -d/ -f1|rev|cut -d. -f1,2,3,4`;
-				CHECKCONFIG=${OVPNPATH}/${SRVNAME};
-				if [ -f ${CHECKCONFIG} ]; then
-					mv ${CHECKCONFIG} ${LASTCONF} && echo "Enabled: ${LASTCONF}";
-					if [ -f "/tmp/${SRVNAME}" ]; then
-						TUNDATA=`cat "/tmp/${SRVNAME}"`;
-						echo "$TUNDATA" | grep "^dev\ tun[0-9]" >/dev/null && sed -i '/^dev\ tun/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^route-nopull" >/dev/null && sed -i '/^route-nopull/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^fast-io" >/dev/null && sed -i '/^fast-io/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^up" >/dev/null && sed -i '/^up/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^script-security" >/dev/null && sed -i '/^script-security/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^verb" >/dev/null && sed -i '/^verb/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^log" >/dev/null && sed -i '/^log/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^socks-proxy" >/dev/null && sed -i '/^socks-proxy/d' ${LASTCONF};
-						echo "$TUNDATA" | grep "^http-proxy" >/dev/null && sed -i '/^http-proxy/d' ${LASTCONF};
-						echo -e "\n#RESTORED SETTINGS" >> ${LASTCONF};
-						TD=`echo "${TUNDATA}" | tr '\n' '|'`; echo "${TUNDATA}" >> ${LASTCONF} && echo -e " Restore: '${TD}' to ${LASTCONF}\n" && rm -f "/tmp/${SRVNAME}";
-					fi;
-				 fi;
-			done;
+unpackconfigs () {
+	if [ -f ${OCFGFILE} ]; then 
 		
-			if [ -f ${IPTABLESANTILEAK} ] && [ ${ROOT} -eq 1 ]; then				
-				if [ ! -x ${IPTABLESANTILEAK} ]; then chmod +x ${IPTABLESANTILEAK}; fi
-				echo "Found IPtables Anti-Leak Script ${IPTABLESANTILEAK}: reload rules!";
-				${IPTABLESANTILEAK};
-			elif [ -f ${IPTABLESANTILEAK} ] && [ ${ROOT} -eq 0 ]; then				
-				if [ ! -x ${IPTABLESANTILEAK} ]; then chmod +x ${IPTABLESANTILEAK}; fi
-				echo "Need root to reload IPtables Anti-Leak Script: su -c '${IPTABLESANTILEAK}'";
-			else
-				echo -e "$Warning! IPtables Anti-Leak Script NOT FOUND in: {IPTABLESANTILEAK}\nCheck https://raw.githubusercontent.com/ovpn-to/oVPN.to-IPtables-Anti-Leak/master/iptables.sh"; 
-			fi;
+		LASTACTIVECONFIGS=`ls ${OVPNPATH}/*ovpn.to*.conf 2>/dev/null`;
 
-			echo ${REMOTELASTUPDATE} > ${LASTUPDATEFILE};
-			echo -e "\n####################\noVPN Update: Job done!";
-		else
-			echo "Error: Files not found '${OCFGFILE}' '${CERTFILE}'"
+		# read tunX-ifs to backup
+		for LASTCONF in ${LASTACTIVECONFIGS}; do
+			SRVNAME=`echo ${LASTCONF}|rev|cut -d/ -f1|rev|cut -d. -f1,2,3,4`;
+			TUNDATA=`grep -E "^dev\ tun[0-9]|^route-nopull|^fast-io|^nice|^up|^down|^script-security|^verb|^ncp|^cipher|^tls|^log|^socks-proxy|^http-proxy" ${LASTCONF}`;
+			test $? -eq 0 && echo "${TUNDATA}" > "/tmp/${SRVNAME}" && TD=`echo "${TUNDATA}" | tr '\n' '|'` && echo -e " Backup: '${TD}' to /tmp/${SRVNAME}";
+		done;
+		OLDDIRS=`ls -d ${OVPNPATH}/*.ovpn.to 2>/dev/null`;
+		for ODIR in ${OLDDIRS}; do if [ ${DEBUG} -eq 1 ]; then rm -rvf ${ODIR}; else rm -rf ${ODIR}; fi; done;			
+		
+		if [ ${DEBUG} -eq 1 ]; then RM="rm -vf"; else RM="rm -f"; fi
+		${RM} ${OVPNPATH}/*.ovpn.to.ovpn ${OVPNPATH}/*.ovpn.to*.conf ${OVPNPATH}/ovpnproxy-authfile.txt ${OVPNPATH}/*.log;
+
+		echo "Extracting...";
+		if test ${UNZIP} = "unzip"; then 
+			ECMD1="unzip ${OCFGFILE} -d ${OVPNPATH}";
 		fi;
+		if test ${UNZIP} = "7z"; then 
+			ECMD1="7z e -o${OVPNPATH} ${OCFGFILE} -y"; 
+		fi;
+		
+		if [ ${DEBUG} -eq 1 ]; then ${ECMD1}; else ${ECMD1} 1>/dev/null; fi;
+		
+		for LASTCONF in ${LASTACTIVECONFIGS}; do
+			SRVNAME=`echo ${LASTCONF}|rev|cut -d/ -f1|rev|cut -d. -f1,2,3,4`;
+			CHECKCONFIG=${OVPNPATH}/${SRVNAME};
+			if [ -f ${CHECKCONFIG} ]; then
+				mv ${CHECKCONFIG} ${LASTCONF} && echo "Enabled: ${LASTCONF}";
+				if [ -f "/tmp/${SRVNAME}" ]; then
+					TUNDATA=`cat "/tmp/${SRVNAME}"`;
+					echo "$TUNDATA" | grep "^dev\ tun[0-9]" >/dev/null && sed -i '/^dev\ tun/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^route-nopull" >/dev/null && sed -i '/^route-nopull/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^fast-io" >/dev/null && sed -i '/^fast-io/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^up" >/dev/null && sed -i '/^up/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^script-security" >/dev/null && sed -i '/^script-security/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^verb" >/dev/null && sed -i '/^verb/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^ncp" >/dev/null && sed -i '/^ncp/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^cipher" >/dev/null && sed -i '/^cipher/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^tls" >/dev/null && sed -i '/^tls/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^log" >/dev/null && sed -i '/^log/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^socks-proxy" >/dev/null && sed -i '/^socks-proxy/d' ${LASTCONF};
+					echo "$TUNDATA" | grep "^http-proxy" >/dev/null && sed -i '/^http-proxy/d' ${LASTCONF};
+					echo -e "\n#RESTORED SETTINGS" >> ${LASTCONF};
+					TD=`echo "${TUNDATA}" | tr '\n' '|'`; echo "${TUNDATA}" >> ${LASTCONF} && echo -e " Restore: '${TD}' to ${LASTCONF}\n" && rm -f "/tmp/${SRVNAME}";
+				fi;
+			 fi;
+		done;
+	
+		if [ -f ${IPTABLESANTILEAK} ] && [ ${ROOT} -eq 1 ]; then				
+			if [ ! -x ${IPTABLESANTILEAK} ]; then chmod +x ${IPTABLESANTILEAK}; fi
+			echo "Found IPtables Anti-Leak Script ${IPTABLESANTILEAK}: reload rules!";
+			${IPTABLESANTILEAK};
+		elif [ -f ${IPTABLESANTILEAK} ] && [ ${ROOT} -eq 0 ]; then				
+			if [ ! -x ${IPTABLESANTILEAK} ]; then chmod +x ${IPTABLESANTILEAK}; fi
+			echo "Need root to reload IPtables Anti-Leak Script: su -c '${IPTABLESANTILEAK}'";
+		else
+			echo -e "$Warning! IPtables Anti-Leak Script NOT FOUND in: {IPTABLESANTILEAK}\nCheck https://raw.githubusercontent.com/ovpn-to/oVPN.to-IPtables-Anti-Leak/master/iptables.sh"; 
+		fi;
+
+		echo ${REMOTELASTUPDATE} > ${LASTUPDATEFILE};
+		echo -e "\n####################\noVPN Update: Job done!";
+	else
+		echo "Error: File not found '${OCFGFILE}'";
 	fi;
 }
 
 
 apigetconfigs () {
 	OCFGFILE="oVPN.to_Configurations_${USERID}_${OCFGTYPE}_${CVERSION}.zip";
-	echo -n "Download VPN Config: ";
+	echo -n "Downloading Configs: ";
 	DATA="uid=${USERID}&apikey=${APIKEY}&action=getconfigs&version=${CVERSION}&type=${OCFGTYPE}";
-	rm -f ${OCFGFILE}; 		
+	rm -f ${OCFGFILE};
 	REQUEST=`${CURL} --request POST ${URL} --data ${DATA} -o ${OCFGFILE}`;
-	if test -f ${OCFGFILE}; then echo "ready"; else echo "Error getting oVPN Configs!"; exit 1; fi;
+	if test -f ${OCFGFILE}; then echo "ready (${OCFGFILE})"; else echo "Error getting oVPN Configs!"; exit 1; fi;
 }
 
 
@@ -283,7 +268,7 @@ apicheckupdate () {
 			INPUT=`echo ${READINPUT} | tr '[:upper:]' '[:lower:]'`;
 			if [ ! -z ${INPUT} ]&&([ ${INPUT} = "yes" ]||[ ${INPUT} = "y" ]); then
 					apigetconfigs ${1} ${2} ${3};
-					apirequestcerts ${1} ${2} ${3};
+					unpackconfigs ${1} ${2} ${3};
 			else
 				echo "Aborted.";
 				exit 1;
