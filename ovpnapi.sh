@@ -34,11 +34,11 @@ requirements () {
 		fi;
 	else	ROOT=1; echo "[root]"; fi;
 
-	which unzip >/dev/null && UNZIP="unzip";
-	which 7z >/dev/null && UNZIP="7z";
-	if which curl >/dev/null; then CURL="curl --connect-timeout 16 -s"; else echo "curl not found"; exit 1; fi;
+	which unzip >/dev/null 2>&1 && UNZIP="unzip";
+	which 7z >/dev/null 2&>1 && UNZIP="7z";
+	if which curl >/dev/null 2>&1; then CURL="curl --connect-timeout 16 -s"; else echo "curl not found"; exit 1; fi;
 	
-	if which openvpn >/dev/null; then 
+	if which openvpn >/dev/null 2>&1; then 
 		OPENVPNBIN=`which openvpn`;
 	else
 		if test -f /usr/sbin/openvpn; then OPENVPNBIN=/usr/sbin/openvpn;
@@ -46,7 +46,7 @@ requirements () {
 		else	echo "openvpn not found"; exit 1;
 		fi;	
 	fi;
-	if ! which openssl >/dev/null; then echo "openssl not found"; exit 1; fi;
+	if ! which openssl >/dev/null 2>&1; then echo "openssl not found"; exit 1; fi;
 	if test -z $UNZIP; then echo "ERROR:unzip or 7z not found"; exit 1; fi;
 	TESTCONN=`${CURL} ${URL}`;
 	if test $? -gt 0; then echo "Connect to ${URL} failed.";
