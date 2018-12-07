@@ -1,5 +1,5 @@
 #!/bin/bash
-SCRIPTVERSION=46
+SCRIPTVERSION=48
 # 
 # oVPN.to API LINUX Updater
 #
